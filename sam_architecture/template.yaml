@@ -1,0 +1,103 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  roboBlog-process-and-post
+
+  Insert processed entries into dynamoDB
+  Use dynamoDB entries to pseudo-randomly generate and post to wordpress
+Parameters:
+  WordpressIP:
+    Type: String
+    Description: The static IP attached to your wordpress instance
+
+Globals:
+  Function:
+    Timeout: 300
+
+Resources:
+  RoboBlogArchiverFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: builder/
+      Handler: index.lambda_handler
+      Runtime: python3.7
+      Environment:
+        Variables:
+          DYNAMO_DB_NAME: !Ref MyTable
+          SQS_URL: !Ref MyQueue
+      Policies:
+        - SQSPollerPolicy:
+              QueueName:
+                !GetAtt MyQueue.QueueName
+        - DynamoDBCrudPolicy:
+              TableName:
+                !Ref MyTable
+      Events:
+        SQSEvent:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt MyQueue.Arn
+            BatchSize: 10
+
+  RoboBlogGeneratorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: generator/
+      Handler: index.lambda_handler
+      Runtime: python3.7
+      Environment:
+        Variables:
+          DYNAMO_DB_NAME: !Ref MyTable
+          WP_IP: !Ref WordpressIP
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - 'ssm:GetParameter'
+              Resource: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/WP_PWD'
+        - DynamoDBReadPolicy:
+            TableName:
+              !Ref MyTable
+      Events:
+        GeneratePostScheduledEvent:
+          Type: Schedule
+          Properties:
+            Schedule: rate(1 day)
+
+  MyQueue:
+    Type: 'AWS::SQS::Queue'
+    Properties:
+      VisibilityTimeout: 900
+      RedrivePolicy:
+        maxReceiveCount: 1
+        deadLetterTargetArn: !GetAtt MyQueueDeadLetter.Arn
+
+  MyQueueDeadLetter:
+    Type: 'AWS::SQS::Queue'
+
+  MyTable:
+    Type: 'AWS::DynamoDB::Table'
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: prefix
+          AttributeType: S
+      KeySchema:
+        - KeyType: HASH
+          AttributeName: prefix
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+
+Outputs:
+  StackSQSUrl:
+    Description: The url of the SQS Queue
+    Value: !Ref MyQueue
+    Export:
+      Name: !Sub "${AWS::StackName}-SQSURL"
+  StackSQSArn:
+    Description: The ARN of the SQS Queue
+    Value: !GetAtt MyQueue.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-SQSARN"
