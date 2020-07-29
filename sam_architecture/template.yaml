@@ -12,7 +12,7 @@ Parameters:
 
 Globals:
   Function:
-    Timeout: 300
+    Timeout: 900
 
 Resources:
   RoboBlogArchiverFunction:
