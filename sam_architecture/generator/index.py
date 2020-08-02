@@ -130,7 +130,8 @@ def lambda_handler(event, context):
             'tags': 5,
             'categories': 6}
     http = urllib3.PoolManager()
-    r = http.request('POST', 'https://%s/wp-json/wp/v2/posts' % os.environ['WP_IP'], headers=headers, fields=body)
+    # change http to https for the last how-to
+    r = http.request('POST', 'http://%s/wp-json/wp/v2/posts' % os.environ['WP_IP'], headers=headers, fields=body)
 
     return {
         'statusCode': r.status
