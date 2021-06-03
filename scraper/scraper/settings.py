@@ -35,13 +35,10 @@ ROBOTSTXT_OBEY = True
 #
 # # Feeds
 # s3_uri = 's3://%s/dump_%s.json' % (os.environ['EXPORT_BUCKET'], datetime.datetime.now().strftime("%Y%m%d"))
+# FEED_EXPORT_FIELDS = ['topic', 'url', 'text']
 # FEEDS = {
 #         s3_uri: {
-#                 'format': 'json',
-#                 'encoding': 'utf8',
-#                 'store_empty': False,
-#                 'fields': None,
-#                 'indent': 4,
+#             'format': 'csv'
 #         }
 # }
 #

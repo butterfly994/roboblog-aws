@@ -1,6 +1,5 @@
 import scrapy
 from bs4 import BeautifulSoup
-import re
 
 class ArticlesSpider(scrapy.Spider):
     name = "articles"
@@ -10,73 +9,36 @@ class ArticlesSpider(scrapy.Spider):
     ]
 
     def parse(self, response):
-        #fetches the pages for each medium topic
+        # fetches the pages for each medium topic
         links = response.css('a')
         for i in range(20, 205, 2):
             soup = BeautifulSoup(links[i].extract(), 'html.parser')
             link = soup.a.get('href')
-            yield response.follow(link, callback=self.parseTopics)
+            topic = link.split('/')[-1]
+            yield response.follow(link, callback=self.parse_topics, cb_kwargs=dict(topic=topic))
 
-    def parseTopics(self, response):
-        articles = response.css('h3.ap.q').xpath('./a/@href')
+    def parse_topics(self, response, topic):
+        articles = response.css('h3.bh.fx').xpath('./a/@href')
         for i in range(len(articles)):
-            # the fourth entry currently is a writer feature card which doesn't match
-            # the further scraping routine
-            if i != 4:
-                fullLink = articles[i].extract()
-                yield response.follow(fullLink, callback=self.parseArticles)
+            link = articles[i].extract()
+            if link[0] == '/':
+                link = 'https://medium.com' + link
+            yield response.follow(link, callback=self.parse_articles, cb_kwargs=dict(topic=topic, link=link))
 
-    def postprocess(self, original):
-        #post processing
-        text = original.replace('( ', '(')
-        text = text.replace('\u201c', '"')
-        text = text.replace('\u201d', '"')
-        parentheticals = re.findall('\([^()]*\)', text)
-        quotes = re.findall('"[^"]*"', text)
-        for paren in parentheticals:
-            words = paren.split(' ')
-            if len(words) > 3:
-                text = text.replace(paren, paren[1:len(paren) - 1])
-        for quote in quotes:
-            words = quote.split(' ')
-            if len(words) > 3:
-                text = text.replace(quote, quote[1:len(quote) - 1])
-
-        text = re.sub('Sources.*', '', text, flags=re.DOTALL)
-        text = re.sub('Written by.*', '', text, flags=re.DOTALL)
-        text = re.sub('Written By.*', '', text, flags=re.DOTALL)
-        text = re.sub('written by.*', '', text, flags=re.DOTALL)
-        text = re.sub('References.*', '', text, flags=re.DOTALL)
-        text = re.sub('Further Reading.*', '', text, flags=re.DOTALL)
-        text = re.sub(' .*@.*', '', text, flags=re.DOTALL)
-        text = re.sub('http.*', '', text)
-        text = re.sub('www.*', '', text)
-        text = re.sub('Credit:.*', '', text)
-        text = re.sub('Copyright.*', '', text)
-        text = re.sub('\u00A9.*', '', text)
-        text = re.sub('\u00Ae.*', '', text)
-        text = re.sub('Trademark.*', '', text)
-        text = re.sub('Illustration:.*', '', text)
-        text = re.sub('Illustrations:.*', '', text)
-        text = re.sub('Photo:.*', '', text)
-        text = re.sub('Photo by.*', '', text)
-        text = re.sub('\[\d\]', '', text)
-        text = re.sub('\(\d\)', '', text)
-        text = re.sub('#\d', '', text)
-        text = text.strip()
-        text = re.sub(' +', ' ', text)
-
-        return text
-
-    def parseArticles(self, response):
+    def parse_articles(self, response, topic, link):
         # extract the text from each article
-        scrapedFile = ''
-        for paragraph in response.css('p'):
-            soup = BeautifulSoup(paragraph.extract(), 'html.parser')
-            text = soup.get_text()
-            text = self.postprocess(text)
+        content = BeautifulSoup(response.css('article').extract()[0], 'html.parser').get_text(separator=' ')
 
-            scrapedFile += '<p>' + text + '</p>'
+        # remove metadata: author, post date, etc
+        idx = content.find('·')
+        content = content[idx + 2:]
+        words = content.split(' ')
+        if words[2] == 'read':
+            words = words[3:]
+        else:
+            words = words[2:]
 
-        yield {'text': scrapedFile}
+        # cut off the query string from the url when storing it
+        link = link[:link.find('?')]
 
+        yield {'topic': topic, 'url': link, 'text': ' '.join(words)}
